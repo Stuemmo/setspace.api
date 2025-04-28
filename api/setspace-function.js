@@ -135,13 +135,15 @@ if (videoSize === '1080p') {
     // Call Replicate
     console.log('Calling Replicate with signed image and cinematic prompt...');
 
-    const output = await replicate.run(klingModelVersion, {
-      input: {
-        prompt: cinematicPrompt,
-        start_image: imageUrl
-      }
-    });
+    // Build a proper public image URL
+  const publicImageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${filename}`;
 
+const output = await replicate.run(klingModelVersion, {
+  input: {
+    prompt: cinematicPrompt,
+    start_image: publicImageUrl   // ✅ USE THIS
+  }
+});
     console.log('Replicate output received.');
 
     return res.status(200).json({ success: true, replicateOutput: output });
