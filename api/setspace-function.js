@@ -144,5 +144,11 @@ console.log('✅ Prediction triggered:', prediction.id);
 // 8. Return immediately with prediction ID
 return res.status(200).json({
   success: true,
-  predictionId: prediction.id     // <<< ✅ FLAT, NOT nested under replicateOutput
+  predictionId: prediction.id   // ✅ Flat, NOT nested under replicateOutput
 });
+
+} catch (error) {
+  console.error('❌ Video generation failed:', error);
+  return res.status(500).json({ error: error.message });
+}
+}
