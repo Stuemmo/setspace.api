@@ -19,25 +19,20 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
+    // 1. Validate incoming fields
     const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize } = req.body;
-
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize) {
-      console.error('Missing required fields', req.body);
+      console.error('❌ Missing required fields', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    console.log(`Starting video generation for job ${jobId}`);
+    console.log(`🚀 Starting video generation for job: ${jobId}`);
 
-    // Upload small image to Supabase Storage
+    // 2. Upload small image to Supabase
     const buffer = Buffer.from(smallImageBase64, 'base64');
     const uploadPath = `small/${filename}`;
 
@@ -50,33 +45,31 @@ export default async function handler(req, res) {
       });
 
     if (uploadError) {
-      console.error('Upload error:', uploadError);
+      console.error('❌ Upload error:', uploadError);
       throw new Error('Failed to upload small image');
     }
 
-    console.log('Small image uploaded:', uploadData);
+    console.log('✅ Small image uploaded:', uploadData);
 
-    // Get signed URL for the uploaded small image
+    // 3. Create signed URL
     const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
       .from('uploads')
-      .createSignedUrl(uploadPath, 60 * 60); // 1 hour expiry
+      .createSignedUrl(uploadPath, 5 * 60); // 5 minutes expiry for safety
 
     if (signedUrlError) {
-      console.error('Signed URL error:', signedUrlError);
+      console.error('❌ Signed URL error:', signedUrlError);
       throw new Error('Failed to create signed URL');
     }
 
     const signedImageUrl = signedUrlData.signedUrl;
+    console.log('✅ Signed image URL created.');
 
-    console.log('Signed image URL:', signedImageUrl);
-
-    // Prepare OpenAI prompt
+    // 4. Generate cinematic prompt via OpenAI
     let cinematicPrompt = "A cinematic scene."; // fallback
 
     try {
-      console.log('Calling OpenAI Vision API to generate prompt...');
-
+      console.log('🧠 Calling OpenAI Vision to generate cinematic prompt...');
       const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -95,7 +88,10 @@ export default async function handler(req, res) {
               content: [
                 {
                   type: 'text',
-                  text: `Create a cinematic description of this interior scene for video animation. \nUse natural movement only — such as light flicker, curtain sway, tree motion, or shifting shadows.\nCamera movement should follow this instruction: \"${cameraControl}\". \nDo not alter the structure of the space. Maintain realism and elegance.`
+                  text: `Create a cinematic description of this interior scene for video animation. 
+Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows).
+Camera movement: "${cameraControl}".
+Do not alter the structure of the space. Keep realism and elegance.`
                 },
                 {
                   type: 'image_url',
@@ -110,46 +106,41 @@ export default async function handler(req, res) {
 
       const visionData = await visionResponse.json();
 
-      if (visionData.choices && visionData.choices[0]?.message?.content) {
+      if (visionData?.choices?.[0]?.message?.content) {
         cinematicPrompt = visionData.choices[0].message.content.trim();
-        console.log('Generated OpenAI prompt:', cinematicPrompt);
+        console.log('✅ Cinematic prompt generated.');
       } else {
-        console.warn('OpenAI fallback used (no content returned).');
+        console.warn('⚠️ OpenAI fallback: no cinematic prompt content.');
       }
 
-    } catch (err) {
-      console.error('OpenAI Vision API error:', err);
-      console.warn('Falling back to generic prompt.');
+    } catch (openaiError) {
+      console.error('❌ OpenAI Vision API error:', openaiError);
+      console.warn('⚠️ Falling back to generic prompt.');
     }
 
-// Choose Kling model
-let klingModelVersion;
-if (videoSize === '1080p') {
-  klingModelVersion = 'kwaivgi/kling-v1.6-pro:ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50';
-} else {
-  klingModelVersion = 'kwaivgi/kling-v1.6-standard:7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
-}
+    // 5. Select Kling model version
+    const klingModelVersion = videoSize === '1080p'
+      ? 'kwaivgi/kling-v1.6-pro:ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
+      : 'kwaivgi/kling-v1.6-standard:7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
 
-    console.log(`Selected Kling model: ${klingModelVersion}`);
+    console.log(`🎥 Using Kling model: ${klingModelVersion}`);
 
-    // Call Replicate
-    console.log('Calling Replicate with signed image and cinematic prompt...');
+    // 6. Call Replicate to start video generation
+    console.log('📤 Calling Replicate with cinematic prompt...');
+    const output = await replicate.run(klingModelVersion, {
+      input: {
+        prompt: cinematicPrompt,
+        start_image: signedImageUrl
+      }
+    });
 
-    // Build a proper public image URL
-  const publicImageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${encodeURIComponent(filename)}`;
+    console.log('✅ Replicate video generation started successfully.');
 
-const output = await replicate.run(klingModelVersion, {
-  input: {
-    prompt: cinematicPrompt,
-    start_image: publicImageUrl   // ✅ USE THIS
-  }
-});
-    console.log('Replicate output received.');
-
+    // 7. Return success response
     return res.status(200).json({ success: true, replicateOutput: output });
 
   } catch (error) {
-    console.error('Video generation failed:', error);
+    console.error('❌ Video generation failed:', error);
     return res.status(500).json({ error: error.message });
   }
 }
