@@ -1,148 +1,153 @@
-import { createClient } from "@supabase/supabase-js";
-import fetch from "node-fetch";
+// /api/setspace-function.js
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { createClient } from '@supabase/supabase-js';
+import Replicate from 'replicate';
+import { Readable } from 'stream';
+import fetch from 'node-fetch';
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const replicateApiKey = process.env.REPLICATE_API_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+const replicate = new Replicate({ auth: replicateApiKey });
 
 export default async function handler(req, res) {
-  // --- CORS HEADERS ---
-  res.setHeader("Access-Control-Allow-Origin", "https://preview--prop-ai-cinema.lovable.app");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
 
-  // --- CONTINUE NORMAL LOGIC ---
-  try {
-    const { jobId, filename, smallImageBase64, imageUrl } = req.body;
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
-    if (!jobId || !filename || !smallImageBase64) {
-      throw new Error("Missing required fields");
+  try {
+    const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize } = req.body;
+
+    if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize) {
+      console.error('Missing required fields', req.body);
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    console.log("Starting video generation for job:", jobId);
+    console.log(`Starting video generation for job ${jobId}`);
 
     // Upload small image to Supabase Storage
-    const smallImageBuffer = Buffer.from(smallImageBase64, "base64");
-    const { error: uploadError } = await supabase
+    const buffer = Buffer.from(smallImageBase64, 'base64');
+    const uploadPath = `small/${filename}`;
+
+    const { data: uploadData, error: uploadError } = await supabase
       .storage
-      .from("uploads-small")
-      .upload(`jobs/${filename}`, smallImageBuffer, {
-        contentType: "image/jpeg",
+      .from('uploads')
+      .upload(uploadPath, buffer, {
+        contentType: 'image/jpeg',
         upsert: true,
       });
 
     if (uploadError) {
-      console.error("Upload failed:", uploadError.message);
-      throw new Error(`Upload failed: ${uploadError.message}`);
+      console.error('Upload error:', uploadError);
+      throw new Error('Failed to upload small image');
     }
 
-    console.log("Small image uploaded to uploads-small.");
+    console.log('Small image uploaded:', uploadData);
 
-    // Sign the uploaded small image URL
-    const signRes = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/sign/uploads-small/jobs/${filename}`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ expiresIn: 900 }),
-    });
+    // Get signed URL for the uploaded small image
+    const { data: signedUrlData, error: signedUrlError } = await supabase
+      .storage
+      .from('uploads')
+      .createSignedUrl(uploadPath, 60 * 60); // 1 hour expiry
 
-    const { signedURL } = await signRes.json();
-    const signedSmallImageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/${signedURL}`;
+    if (signedUrlError) {
+      console.error('Signed URL error:', signedUrlError);
+      throw new Error('Failed to create signed URL');
+    }
 
-    console.log("Signed small image URL:", signedSmallImageUrl);
+    const signedImageUrl = signedUrlData.signedUrl;
 
-    // Update job in Supabase with small image URL
-    await supabase.from("jobs").update({
-      small_image_url: signedSmallImageUrl
-    }).eq("id", jobId);
+    console.log('Signed image URL:', signedImageUrl);
 
-    console.log("Job updated with small image URL.");
+    // Prepare OpenAI prompt
+    let cinematicPrompt = "A cinematic scene."; // fallback
 
-    // Prepare payload for OpenAI
-    const openaiPrompt = `Create a cinematic description of this interior scene for video animation. 
-Use natural movement only — such as light flicker, curtain sway, tree motion, or shifting shadows.
-Camera movement should follow this instruction: "zoom-in". 
-Do not alter the structure of the space. Maintain realism and elegance.`;
-
-    console.log("Calling OpenAI for cinematic prompt...");
-
-    let prompt = "A cinematic scene.";
     try {
-      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
+      console.log('Calling OpenAI Vision API to generate prompt...');
+
+      const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: "gpt-4-vision-preview",
+          model: 'gpt-4-vision-preview',
           messages: [
             {
-              role: "user",
-              content: [
-                { type: "text", text: openaiPrompt },
-                { type: "image_url", image_url: { url: signedSmallImageUrl } },
-              ],
+              role: 'system',
+              content: 'You are a cinematic scene director.'
             },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Create a cinematic description of this interior scene for video animation. \nUse natural movement only — such as light flicker, curtain sway, tree motion, or shifting shadows.\nCamera movement should follow this instruction: \"${cameraControl}\". \nDo not alter the structure of the space. Maintain realism and elegance.`
+                },
+                {
+                  type: 'image_url',
+                  image_url: signedImageUrl
+                }
+              ]
+            }
           ],
-          max_tokens: 150,
-        }),
+          max_tokens: 300
+        })
       });
 
-      if (openaiRes.ok) {
-        const openaiData = await openaiRes.json();
-        prompt = openaiData?.choices?.[0]?.message?.content?.trim() || prompt;
-        console.log("Received cinematic prompt:", prompt);
+      const visionData = await visionResponse.json();
+
+      if (visionData.choices && visionData.choices[0]?.message?.content) {
+        cinematicPrompt = visionData.choices[0].message.content.trim();
+        console.log('Generated OpenAI prompt:', cinematicPrompt);
       } else {
-        const text = await openaiRes.text();
-        console.error("OpenAI error fallback:", text);
+        console.warn('OpenAI fallback used (no content returned).');
       }
+
     } catch (err) {
-      console.error("Error calling OpenAI:", err.message);
+      console.error('OpenAI Vision API error:', err);
+      console.warn('Falling back to generic prompt.');
     }
 
-    // Start Replicate video generation
-    console.log("Calling Replicate API to start video generation...");
+    // Choose Kling model
+    let klingModelVersion;
+    if (videoSize === '1080p') {
+      klingModelVersion = 'kwaivgi/kling-v1.6-pro';
+    } else {
+      klingModelVersion = 'kwaivgi/kling-v1.6-standard';
+    }
 
-    const replicateRes = await fetch("https://api.replicate.com/v1/models/kwaivgi/kling-v1.6-standard/predictions", {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${process.env.REPLICATE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        input: {
-          start_image: imageUrl ?? signedSmallImageUrl,
-          prompt,
-          duration: 5
-        }
-      }),
+    console.log(`Selected Kling model: ${klingModelVersion}`);
+
+    // Call Replicate
+    console.log('Calling Replicate with signed image and cinematic prompt...');
+
+    const output = await replicate.run(klingModelVersion, {
+      input: {
+        prompt: cinematicPrompt,
+        start_image: imageUrl
+      }
     });
 
-    const replicateData = await replicateRes.json();
-    const predictionId = replicateData.id;
+    console.log('Replicate output received.');
 
-    console.log("Replicate started, prediction ID:", predictionId);
+    return res.status(200).json({ success: true, replicateOutput: output });
 
-    // Save prediction ID back to job
-    await supabase.from("jobs").update({
-      prompt,
-      replicate_prediction_id: predictionId,
-      status: "generating",
-      updated_at: new Date().toISOString()
-    }).eq("id", jobId);
-
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("❌ Error in handler:", err.message);
-    res.status(500).json({ error: err.message });
+  } catch (error) {
+    console.error('Video generation failed:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
