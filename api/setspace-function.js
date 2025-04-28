@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     const buffer = Buffer.from(smallImageBase64, 'base64');
     const uploadPath = `small/${filename}`;
 
-    const { data: uploadData, error: uploadError } = await supabase
+    const { error: uploadError } = await supabase
       .storage
       .from('uploads')
       .upload(uploadPath, buffer, {
@@ -49,13 +49,13 @@ export default async function handler(req, res) {
       throw new Error('Failed to upload small image');
     }
 
-    console.log('✅ Small image uploaded:', uploadData);
+    console.log('✅ Small image uploaded.');
 
     // 3. Create signed URL
     const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
       .from('uploads')
-      .createSignedUrl(uploadPath, 5 * 60); // 5 minutes expiry for safety
+      .createSignedUrl(uploadPath, 5 * 60); // 5 minutes expiry
 
     if (signedUrlError) {
       console.error('❌ Signed URL error:', signedUrlError);
@@ -125,19 +125,27 @@ Do not alter the structure of the space. Keep realism and elegance.`
 
     console.log(`🎥 Using Kling model: ${klingModelVersion}`);
 
-    // 6. Call Replicate to start video generation
-    console.log('📤 Calling Replicate with cinematic prompt...');
-    const output = await replicate.run(klingModelVersion, {
+    // 6. Fire Replicate prediction (async)
+    console.log('📤 Triggering Replicate prediction...');
+
+    const prediction = await replicate.predictions.create({
+      version: klingModelVersion,
       input: {
         prompt: cinematicPrompt,
         start_image: signedImageUrl
       }
     });
 
-    console.log('✅ Replicate video generation started successfully.');
+    console.log('✅ Prediction triggered:', prediction.id);
 
-    // 7. Return success response
-    return res.status(200).json({ success: true, replicateOutput: output });
+    // 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
+    // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
+
+    // 8. Return immediately with prediction ID
+    return res.status(200).json({
+      success: true,
+      predictionId: prediction.id
+    });
 
   } catch (error) {
     console.error('❌ Video generation failed:', error);
