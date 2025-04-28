@@ -118,25 +118,32 @@ Do not alter the structure of the space. Keep realism and elegance.`
       console.warn('⚠️ Falling back to generic prompt.');
     }
 
-    // 5. Select Kling model version
-    const klingModelVersion = videoSize === '1080p'
-      ? 'kwaivgi/kling-v1.6-pro:ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
-      : 'kwaivgi/kling-v1.6-standard:7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
+   // 5. Select Kling model and version
+let klingModel, klingVersion;
 
-    console.log(`🎥 Using Kling model: ${klingModelVersion}`);
+if (videoSize === '1080p') {
+  klingModel = 'kwaivgi/kling-v1.6-pro';
+  klingVersion = 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50';
+} else {
+  klingModel = 'kwaivgi/kling-v1.6-standard';
+  klingVersion = '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
+}
 
-    // 6. Fire Replicate prediction (async)
-    console.log('📤 Triggering Replicate prediction...');
+console.log(`🎥 Using Kling model: ${klingModel} with version: ${klingVersion}`);
 
-    const prediction = await replicate.predictions.create({
-      version: klingModelVersion,
-      input: {
-        prompt: cinematicPrompt,
-        start_image: signedImageUrl
-      }
-    });
+// 6. Fire Replicate prediction (async)
+console.log('📤 Triggering Replicate prediction...');
 
-    console.log('✅ Prediction triggered:', prediction.id);
+const prediction = await replicate.predictions.create({
+  model: klingModel,
+  version: klingVersion,
+  input: {
+    prompt: cinematicPrompt,
+    start_image: signedImageUrl
+  }
+});
+
+console.log('✅ Prediction triggered:', prediction.id);
 
     // 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
     // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
