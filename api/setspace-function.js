@@ -115,25 +115,23 @@ Do not alter the structure of the space. Keep realism and elegance.`
       console.warn('⚠️ Falling back to generic cinematic prompt.');
     }
 
- // 5. Select Kling version
+// 5. Select Kling version
 const klingVersion = videoSize === '1080p'
   ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
   : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
 
 console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-// 6. Fire Replicate prediction
+// 6. Trigger Replicate prediction (do not wait for full video!)
 console.log('📤 Triggering Replicate prediction...');
 
-const prediction = await replicate.run(
-  `kwaivgi/kling-v1.6-standard:${klingVersion}`,   // <<< CHANGE IS HERE
-  {
-    input: {
-      prompt: cinematicPrompt,
-      start_image: signedImageUrl
-    }
+const prediction = await replicate.predictions.create({
+  version: klingVersion,
+  input: {
+    prompt: cinematicPrompt,
+    start_image: signedImageUrl
   }
-);
+});
 
 if (!prediction?.id) {
   throw new Error('Replicate prediction failed: No prediction ID returned.');
