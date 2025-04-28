@@ -1,157 +1,139 @@
-import { createClient } from '@supabase/supabase-js';
-import fetch from 'node-fetch';
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    return res.status(200).end();
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  const SUPABASE_URL = process.env.PROJECT_URL;
-  const SERVICE_ROLE_KEY = process.env.SERVICE_ROLE_KEY;
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
 
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { jobId, filename, smallImageBase64, imageUrl } = req.body;
-
+    const { jobId, filename, smallImageBase64, imageUrl } = req.body || {};
     if (!jobId || !filename || !smallImageBase64) {
+      console.error("❌ Missing jobId, filename, or smallImageBase64 in request body");
       return res.status(400).json({ error: "Missing jobId, filename, or smallImageBase64" });
     }
 
-    console.log("▶️ Starting job:", jobId);
+    console.log("▶️ Starting processing for jobId:", jobId);
 
-    // Fetch job settings
-    const { data: jobRows, error: jobRowError } = await supabase
-      .from("jobs")
-      .select("camera_control, video_size, duration")
-      .eq("id", jobId);
-
-    if (jobRowError || !jobRows || jobRows.length !== 1) {
-      throw new Error("Could not find unique job row");
-    }
-
-    const { camera_control, video_size, duration } = jobRows[0];
-    const cameraControl = camera_control ?? "stationary";
-    const videoSize = video_size ?? "720p";
-    const videoDuration = duration ?? 5;
-
-    // Upload small image
-    const binary = Buffer.from(smallImageBase64, 'base64');
+    // 1. Upload small image
+    const binary = Buffer.from(smallImageBase64, "base64");
     const smallPath = `jobs/${filename}`;
-
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase
+      .storage
       .from("uploads-small")
-      .upload(smallPath, binary, {
-        contentType: "image/jpeg",
-        upsert: true
-      });
+      .upload(smallPath, binary, { contentType: "image/jpeg", upsert: true });
 
     if (uploadError) {
       console.error("🛑 Upload failed:", uploadError.message);
-      throw new Error(`Upload failed: ${uploadError.message}`);
+      return res.status(500).json({ error: "Upload to Supabase failed" });
     }
 
-    console.log("✅ Small image uploaded");
+    console.log("✅ Small image uploaded:", smallPath);
 
-    // Sign small image URL
-    const { data: signedUrlData, error: signedUrlError } = await supabase
+    // 2. Generate signed URL
+    const { data: signedUrlData, error: signError } = await supabase
       .storage
-      .from('uploads-small')
+      .from("uploads-small")
       .createSignedUrl(smallPath, 900);
 
-    if (signedUrlError) {
-      throw new Error("Failed to sign URL");
+    if (signError) {
+      console.error("🛑 Signed URL generation failed:", signError.message);
+      return res.status(500).json({ error: "Signed URL creation failed" });
     }
 
-    const signedSmallImageUrl = signedUrlData.signedUrl;
+    const signedSmallImageUrl = signedUrlData?.signedUrl
+      ? `${SUPABASE_URL}/storage/v1/${signedUrlData.signedUrl}`
+      : null;
 
-    await supabase
-      .from("jobs")
-      .update({ small_image_url: signedSmallImageUrl })
-      .eq("id", jobId);
+    if (!signedSmallImageUrl) {
+      console.error("🛑 No signed small image URL generated.");
+      return res.status(500).json({ error: "No signed image URL" });
+    }
 
-    // Generate OpenAI prompt
-    const openaiPrompt = `Create a cinematic description of this interior scene for video animation. 
-Use natural movement only — such as light flicker, curtain sway, tree motion, or shifting shadows.
-Camera movement should follow this instruction: "${cameraControl}". 
-Do not alter the structure of the space. Maintain realism and elegance.`;
+    console.log("🔗 Signed small image URL:", signedSmallImageUrl);
 
-    console.log("📝 Sending prompt to OpenAI...");
-
+    // 3. Generate OpenAI prompt
     let prompt = "A cinematic scene.";
     try {
+      console.log("🤖 Calling OpenAI...");
       const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: "gpt-4-vision-preview",
           messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: openaiPrompt },
-                { type: "image_url", image_url: { url: signedSmallImageUrl } }
-              ]
-            }
+            { role: "user", content: [
+              { type: "text", text: "Create a cinematic description of this interior scene for video animation. Use natural movement only — light flicker, tree sway, shadow shift. No structure changes. Maintain realism." },
+              { type: "image_url", image_url: { url: signedSmallImageUrl } }
+            ] }
           ],
-          max_tokens: 150
-        })
+          max_tokens: 150,
+        }),
       });
+
+      if (!openaiRes.ok) {
+        const openaiErrorText = await openaiRes.text();
+        console.error("⚠️ OpenAI request failed:", openaiErrorText);
+        throw new Error("OpenAI failed");
+      }
 
       const openaiData = await openaiRes.json();
       prompt = openaiData?.choices?.[0]?.message?.content?.trim() || prompt;
-      console.log("🎬 OpenAI prompt:", prompt);
-    } catch (err) {
-      console.error("⚠️ OpenAI fallback used:", err.message);
+      console.log("📝 OpenAI generated prompt:", prompt);
+
+    } catch (error) {
+      console.error("⚠️ Using fallback prompt due to OpenAI error:", error.message);
     }
 
-    // Trigger Kling via Replicate
-    const replicateInitRes = await fetch("https://api.replicate.com/v1/models/kwaivgi/kling-v1.6-standard/predictions", {
+    // 4. Start Replicate generation
+    const finalImageUrl = imageUrl || signedSmallImageUrl;
+    console.log("🎬 Sending image to Replicate:", finalImageUrl);
+
+    const replicateRes = await fetch("https://api.replicate.com/v1/models/kwaivgi/kling-v1.6-standard/predictions", {
       method: "POST",
       headers: {
-        Authorization: `Token ${REPLICATE_API_KEY}`,
-        "Content-Type": "application/json"
+        "Authorization": `Token ${REPLICATE_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         input: {
-          start_image: imageUrl ?? signedSmallImageUrl,
-          prompt,
-          duration: videoDuration
+          start_image: finalImageUrl,
+          prompt: prompt,
+          duration: 5, // hardcoded for now
         }
-      })
+      }),
     });
 
-    const replicateInitData = await replicateInitRes.json();
-    const predictionId = replicateInitData.id;
+    if (!replicateRes.ok) {
+      const replicateErrorText = await replicateRes.text();
+      console.error("🛑 Replicate call failed:", replicateErrorText);
+      return res.status(500).json({ error: "Replicate request failed" });
+    }
 
-    await supabase
-      .from("jobs")
-      .update({
-        prompt,
-        replicate_prediction_id: predictionId,
-        status: "generating",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", jobId);
+    const replicateData = await replicateRes.json();
+    const predictionId = replicateData?.id;
 
-    console.log("📽️ Replicate started, prediction ID:", predictionId);
+    console.log("🚀 Replicate prediction started, ID:", predictionId);
+
+    if (!predictionId) {
+      return res.status(500).json({ error: "No prediction ID returned from Replicate" });
+    }
+
+    // Optionally save the prediction ID into Supabase `jobs` table here if needed.
 
     return res.status(200).json({ success: true, predictionId });
 
   } catch (err) {
-    console.error("❌ Error:", err);
-    return res.status(500).json({ error: err.message || "Unknown error" });
+    console.error("❌ Fatal server error:", err.message);
+    return res.status(500).json({ error: err.message || "Server error" });
   }
 }
