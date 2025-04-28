@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
+import { Readable } from 'stream';
 import fetch from 'node-fetch';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -13,7 +14,6 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const replicate = new Replicate({ auth: replicateApiKey });
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -22,7 +22,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    // 1. Validate input
     const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize } = req.body;
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize) {
       console.error('❌ Missing required fields', req.body);
@@ -31,16 +30,13 @@ export default async function handler(req, res) {
 
     console.log(`🚀 Starting video generation for job: ${jobId}`);
 
-    // 2. Upload small image to Supabase
     const buffer = Buffer.from(smallImageBase64, 'base64');
     const uploadPath = `small/${filename}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('uploads')
-      .upload(uploadPath, buffer, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
+    const { error: uploadError } = await supabase.storage.from('uploads').upload(uploadPath, buffer, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
 
     if (uploadError) {
       console.error('❌ Upload error:', uploadError);
@@ -49,10 +45,7 @@ export default async function handler(req, res) {
 
     console.log('✅ Small image uploaded.');
 
-    // 3. Create signed URL
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-      .from('uploads')
-      .createSignedUrl(uploadPath, 5 * 60); // 5 minutes expiry
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage.from('uploads').createSignedUrl(uploadPath, 5 * 60);
 
     if (signedUrlError) {
       console.error('❌ Signed URL error:', signedUrlError);
@@ -62,9 +55,7 @@ export default async function handler(req, res) {
     const signedImageUrl = signedUrlData.signedUrl;
     console.log('✅ Signed image URL created.');
 
-    // 4. Generate cinematic prompt using OpenAI Vision
-    let cinematicPrompt = "A cinematic scene."; // fallback
-
+    let cinematicPrompt = "A cinematic scene.";
     try {
       console.log('🧠 Calling OpenAI Vision to generate cinematic prompt...');
       const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -76,24 +67,12 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'gpt-4-vision-preview',
           messages: [
-            {
-              role: 'system',
-              content: 'You are a cinematic scene director.'
-            },
+            { role: 'system', content: 'You are a cinematic scene director.' },
             {
               role: 'user',
               content: [
-                {
-                  type: 'text',
-                  text: `Create a cinematic description of this interior scene for video animation. 
-Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows).
-Camera movement: "${cameraControl}".
-Do not alter the structure of the space. Keep realism and elegance.`
-                },
-                {
-                  type: 'image_url',
-                  image_url: signedImageUrl
-                }
+                { type: 'text', text: `Create a cinematic description of this interior scene for video animation. Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.` },
+                { type: 'image_url', image_url: signedImageUrl }
               ]
             }
           ],
@@ -102,7 +81,6 @@ Do not alter the structure of the space. Keep realism and elegance.`
       });
 
       const visionData = await visionResponse.json();
-
       if (visionData?.choices?.[0]?.message?.content) {
         cinematicPrompt = visionData.choices[0].message.content.trim();
         console.log('✅ Cinematic prompt generated.');
@@ -112,42 +90,53 @@ Do not alter the structure of the space. Keep realism and elegance.`
 
     } catch (openaiError) {
       console.error('❌ OpenAI Vision API error:', openaiError);
-      console.warn('⚠️ Falling back to generic cinematic prompt.');
+      console.warn('⚠️ Falling back to generic prompt.');
     }
 
-// 5. Select Kling version
-const klingVersion = videoSize === '1080p'
-  ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
-  : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
+    const klingVersion = videoSize === '1080p'
+      ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
+      : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
 
-console.log(`🎥 Using Kling version: ${klingVersion}`);
+    console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-// 6. Fire Replicate prediction
-console.log('📤 Triggering Replicate prediction...');
-const prediction = await replicate.predictions.create({
-  version: klingVersion,
-  input: {
-    prompt: cinematicPrompt,
-    start_image: signedImageUrl
-  }
-});
+    console.log('📤 Triggering Replicate prediction...');
+    const prediction = await replicate.predictions.create({
+      version: klingVersion,
+      input: { prompt: cinematicPrompt, start_image: signedImageUrl }
+    });
 
-// Validate properly
-if (!prediction || !prediction.id) {
-  console.error('❌ Replicate raw response:', prediction);
-  throw new Error('Replicate prediction failed: No valid ID returned.');
-}
+    const predictionId = prediction?.id;
 
-console.log('✅ Prediction triggered:', prediction.id);
+    if (!predictionId) {
+      console.error('❌ No prediction ID received:', prediction);
+      throw new Error('Replicate prediction failed: No valid ID.');
+    }
 
+    console.log('✅ Prediction triggered:', predictionId);
 
-    // 7. (Optional) Save prediction ID to Supabase jobs table
-    // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
+    // Poll for completion
+    let finalPrediction;
+    for (let i = 0; i < 30; i++) {
+      const check = await replicate.predictions.get(predictionId);
 
-    // 8. Return success with prediction ID
+      if (check.status === 'succeeded') {
+        finalPrediction = check;
+        break;
+      } else if (check.status === 'failed' || check.status === 'canceled') {
+        throw new Error(`Replicate prediction failed with status: ${check.status}`);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    if (!finalPrediction) {
+      throw new Error('Replicate polling timed out.');
+    }
+
     return res.status(200).json({
       success: true,
-      predictionId: prediction.id // ✅ Flat
+      predictionId: finalPrediction.id,
+      videoUrl: finalPrediction.output
     });
 
   } catch (error) {
