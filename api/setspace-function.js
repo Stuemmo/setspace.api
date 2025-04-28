@@ -122,9 +122,8 @@ const klingVersion = videoSize === '1080p'
 
 console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-// 6. Trigger Replicate prediction (do not wait for full video!)
+// 6. Fire Replicate prediction
 console.log('📤 Triggering Replicate prediction...');
-
 const prediction = await replicate.predictions.create({
   version: klingVersion,
   input: {
@@ -133,8 +132,10 @@ const prediction = await replicate.predictions.create({
   }
 });
 
-if (!prediction?.id) {
-  throw new Error('Replicate prediction failed: No prediction ID returned.');
+// Validate properly
+if (!prediction || !prediction.id) {
+  console.error('❌ Replicate raw response:', prediction);
+  throw new Error('Replicate prediction failed: No valid ID returned.');
 }
 
 console.log('✅ Prediction triggered:', prediction.id);
