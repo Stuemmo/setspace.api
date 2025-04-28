@@ -122,13 +122,13 @@ export default async function handler(req, res) {
       console.warn('Falling back to generic prompt.');
     }
 
-    // Choose Kling model
-    let klingModelVersion;
-    if (videoSize === '1080p') {
-      klingModelVersion = 'kwaivgi/kling-v1.6-pro';
-    } else {
-      klingModelVersion = 'kwaivgi/kling-v1.6-standard';
-    }
+// Choose Kling model
+let klingModelVersion;
+if (videoSize === '1080p') {
+  klingModelVersion = 'kwaivgi/kling-v1.6-pro:ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50';
+} else {
+  klingModelVersion = 'kwaivgi/kling-v1.6-standard:7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
+}
 
     console.log(`Selected Kling model: ${klingModelVersion}`);
 
