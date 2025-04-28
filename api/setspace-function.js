@@ -142,11 +142,13 @@ console.log('✅ Prediction triggered:', prediction.id);
 // 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
 // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
 
-    // 8. Return immediately with prediction ID
-    return res.status(200).json({
-      success: true,
-      predictionId: prediction.id
-    });
+// 8. Return immediately with prediction ID
+return res.status(200).json({
+  success: true,
+  replicateOutput: {
+    id: prediction.id
+  }
+});
 
   } catch (error) {
     console.error('❌ Video generation failed:', error);
