@@ -128,6 +128,7 @@ console.log(`🎥 Using Kling version: ${klingVersion}`);
 // 6. Fire Replicate prediction (async)
 console.log('📤 Triggering Replicate prediction...');
 
+// Declare prediction once
 const prediction = await replicate.predictions.create({
   version: klingVersion,
   input: {
@@ -138,22 +139,8 @@ const prediction = await replicate.predictions.create({
 
 console.log('✅ Prediction triggered:', prediction.id);
 
-// 6. Fire Replicate prediction (async)
-console.log('📤 Triggering Replicate prediction...');
-
-const prediction = await replicate.predictions.create({
-  model: klingModel,
-  version: klingVersion,
-  input: {
-    prompt: cinematicPrompt,
-    start_image: signedImageUrl
-  }
-});
-
-console.log('✅ Prediction triggered:', prediction.id);
-
-    // 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
-    // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
+// 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
+// await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
 
     // 8. Return immediately with prediction ID
     return res.status(200).json({
