@@ -118,18 +118,25 @@ Do not alter the structure of the space. Keep realism and elegance.`
       console.warn('⚠️ Falling back to generic prompt.');
     }
 
-   // 5. Select Kling model and version
-let klingModel, klingVersion;
+// 5. Select Kling version
+const klingVersion = videoSize === '1080p'
+  ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
+  : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
 
-if (videoSize === '1080p') {
-  klingModel = 'kwaivgi/kling-v1.6-pro';
-  klingVersion = 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50';
-} else {
-  klingModel = 'kwaivgi/kling-v1.6-standard';
-  klingVersion = '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
-}
+console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-console.log(`🎥 Using Kling model: ${klingModel} with version: ${klingVersion}`);
+// 6. Fire Replicate prediction (async)
+console.log('📤 Triggering Replicate prediction...');
+
+const prediction = await replicate.predictions.create({
+  version: klingVersion,
+  input: {
+    prompt: cinematicPrompt,
+    start_image: signedImageUrl
+  }
+});
+
+console.log('✅ Prediction triggered:', prediction.id);
 
 // 6. Fire Replicate prediction (async)
 console.log('📤 Triggering Replicate prediction...');
