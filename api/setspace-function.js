@@ -6,7 +6,7 @@ import { Readable } from 'stream';
 import fetch from 'node-fetch';
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SERVICE_ROLE_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const replicateApiKey = process.env.REPLICATE_API_KEY;
 
