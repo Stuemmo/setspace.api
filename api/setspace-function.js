@@ -128,7 +128,6 @@ console.log(`🎥 Using Kling version: ${klingVersion}`);
 // 6. Fire Replicate prediction (async)
 console.log('📤 Triggering Replicate prediction...');
 
-// Declare prediction once
 const prediction = await replicate.predictions.create({
   version: klingVersion,
   input: {
@@ -145,13 +144,5 @@ console.log('✅ Prediction triggered:', prediction.id);
 // 8. Return immediately with prediction ID
 return res.status(200).json({
   success: true,
-  replicateOutput: {
-    id: prediction.id
-  }
+  predictionId: prediction.id     // <<< ✅ FLAT, NOT nested under replicateOutput
 });
-
-  } catch (error) {
-    console.error('❌ Video generation failed:', error);
-    return res.status(500).json({ error: error.message });
-  }
-}
