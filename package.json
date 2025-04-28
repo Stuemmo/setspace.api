@@ -1,8 +1,10 @@
 {
   "name": "setspace-api",
   "version": "1.0.0",
+  "main": "index.js",
   "type": "module",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.6" 
+    "@supabase/supabase-js": "^2.39.4",
+    "node-fetch": "^3.3.2"
   }
 }
