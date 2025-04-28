@@ -2,7 +2,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
-import { Readable } from 'stream';
 import fetch from 'node-fetch';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -14,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const replicate = new Replicate({ auth: replicateApiKey });
 
 export default async function handler(req, res) {
-  // CORS Headers
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -23,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    // 1. Validate incoming fields
+    // 1. Validate input
     const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize } = req.body;
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize) {
       console.error('❌ Missing required fields', req.body);
@@ -36,8 +35,7 @@ export default async function handler(req, res) {
     const buffer = Buffer.from(smallImageBase64, 'base64');
     const uploadPath = `small/${filename}`;
 
-    const { error: uploadError } = await supabase
-      .storage
+    const { error: uploadError } = await supabase.storage
       .from('uploads')
       .upload(uploadPath, buffer, {
         contentType: 'image/jpeg',
@@ -52,8 +50,7 @@ export default async function handler(req, res) {
     console.log('✅ Small image uploaded.');
 
     // 3. Create signed URL
-    const { data: signedUrlData, error: signedUrlError } = await supabase
-      .storage
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('uploads')
       .createSignedUrl(uploadPath, 5 * 60); // 5 minutes expiry
 
@@ -65,7 +62,7 @@ export default async function handler(req, res) {
     const signedImageUrl = signedUrlData.signedUrl;
     console.log('✅ Signed image URL created.');
 
-    // 4. Generate cinematic prompt via OpenAI
+    // 4. Generate cinematic prompt using OpenAI Vision
     let cinematicPrompt = "A cinematic scene."; // fallback
 
     try {
@@ -115,40 +112,43 @@ Do not alter the structure of the space. Keep realism and elegance.`
 
     } catch (openaiError) {
       console.error('❌ OpenAI Vision API error:', openaiError);
-      console.warn('⚠️ Falling back to generic prompt.');
+      console.warn('⚠️ Falling back to generic cinematic prompt.');
     }
 
-// 5. Select Kling version
-const klingVersion = videoSize === '1080p'
-  ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
-  : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
+    // 5. Select Kling version
+    const klingVersion = videoSize === '1080p'
+      ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
+      : '7e324e5fcb9479696f15ab6da262390cddf5a1efa2e11374ef9d1f85fc0f82da';
 
-console.log(`🎥 Using Kling version: ${klingVersion}`);
+    console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-// 6. Fire Replicate prediction (async)
-console.log('📤 Triggering Replicate prediction...');
+    // 6. Fire Replicate prediction
+    console.log('📤 Triggering Replicate prediction...');
+    const prediction = await replicate.predictions.create({
+      version: klingVersion,
+      input: {
+        prompt: cinematicPrompt,
+        start_image: signedImageUrl
+      }
+    });
 
-const prediction = await replicate.predictions.create({
-  version: klingVersion,
-  input: {
-    prompt: cinematicPrompt,
-    start_image: signedImageUrl
+    if (!prediction?.id) {
+      throw new Error('Replicate prediction failed: No prediction ID returned.');
+    }
+
+    console.log('✅ Prediction triggered:', prediction.id);
+
+    // 7. (Optional) Save prediction ID to Supabase jobs table
+    // await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
+
+    // 8. Return success with prediction ID
+    return res.status(200).json({
+      success: true,
+      predictionId: prediction.id // ✅ Flat
+    });
+
+  } catch (error) {
+    console.error('❌ Video generation failed:', error);
+    return res.status(500).json({ error: error.message });
   }
-});
-
-console.log('✅ Prediction triggered:', prediction.id);
-
-// 7. Optional: Save prediction ID to Supabase jobs table (if tracking)
-// await supabase.from('jobs').update({ replicate_prediction_id: prediction.id }).eq('id', jobId);
-
-// 8. Return immediately with prediction ID
-return res.status(200).json({
-  success: true,
-  predictionId: prediction.id   // ✅ Flat, NOT nested under replicateOutput
-});
-
-} catch (error) {
-  console.error('❌ Video generation failed:', error);
-  return res.status(500).json({ error: error.message });
-}
 }
