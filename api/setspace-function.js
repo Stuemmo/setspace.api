@@ -136,7 +136,7 @@ if (videoSize === '1080p') {
     console.log('Calling Replicate with signed image and cinematic prompt...');
 
     // Build a proper public image URL
-  const publicImageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${filename}`;
+  const publicImageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/uploads/${encodeURIComponent(filename)}`;
 
 const output = await replicate.run(klingModelVersion, {
   input: {
