@@ -1,28 +1,30 @@
 // /api/poll-prediction.ts
 
 export const config = {
-  runtime: 'nodejs'
+  runtime: 'edge'
 };
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+export default async function handler(req: Request) {
+  const url = new URL(req.url);
+  const predictionId = url.searchParams.get('predictionId');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (!predictionId) {
+    return new Response(JSON.stringify({ error: 'Missing predictionId' }), {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    });
   }
 
   try {
-    const { predictionId } = req.query;
-    if (!predictionId) {
-      return res.status(400).json({ error: 'Missing predictionId' });
-    }
-
     const response = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
       headers: {
         'Authorization': `Token ${process.env.REPLICATE_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       }
     });
 
@@ -33,10 +35,25 @@ export default async function handler(req, res) {
     }
 
     const prediction = await response.json();
-    return res.status(200).json({ success: true, prediction });
-    
-  } catch (error) {
+
+    return new Response(JSON.stringify({ success: true, prediction }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    });
+
+  } catch (error: any) {
     console.error("❌ Polling handler failed:", error);
-    return res.status(500).json({ error: error.message });
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
   }
 }
