@@ -1,8 +1,5 @@
-// /api/setspace-function.js
-
 import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
-import { Readable } from 'stream';
 import fetch from 'node-fetch';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -99,44 +96,21 @@ export default async function handler(req, res) {
 
     console.log(`🎥 Using Kling version: ${klingVersion}`);
 
-    console.log('📤 Triggering Replicate prediction...');
     const prediction = await replicate.predictions.create({
       version: klingVersion,
       input: { prompt: cinematicPrompt, start_image: signedImageUrl }
     });
 
-    const predictionId = prediction?.id;
-
-    if (!predictionId) {
+    if (!prediction?.id) {
       console.error('❌ No prediction ID received:', prediction);
       throw new Error('Replicate prediction failed: No valid ID.');
     }
 
-    console.log('✅ Prediction triggered:', predictionId);
-
-    // Poll for completion
-    let finalPrediction;
-    for (let i = 0; i < 30; i++) {
-      const check = await replicate.predictions.get(predictionId);
-
-      if (check.status === 'succeeded') {
-        finalPrediction = check;
-        break;
-      } else if (check.status === 'failed' || check.status === 'canceled') {
-        throw new Error(`Replicate prediction failed with status: ${check.status}`);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    if (!finalPrediction) {
-      throw new Error('Replicate polling timed out.');
-    }
+    console.log('✅ Prediction triggered:', prediction.id);
 
     return res.status(200).json({
       success: true,
-      predictionId: finalPrediction.id,
-      videoUrl: finalPrediction.output
+      predictionId: prediction.id
     });
 
   } catch (error) {
