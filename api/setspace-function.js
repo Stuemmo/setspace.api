@@ -19,8 +19,18 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize } = req.body;
-    if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize) {
+    const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize, duration } = req.body;
+
+console.log("📦 Payload received by server:", {
+  jobId,
+  filename,
+  imageUrl,
+  cameraControl,
+  videoSize,
+  duration,
+  smallImageBase64: smallImageBase64?.slice(0, 30) + '...',
+});
+if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
       console.error('❌ Missing required fields', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
