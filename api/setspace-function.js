@@ -19,7 +19,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    // ✅ Fix: match frontend keys exactly, then map them
     const {
       jobId,
       filename,
@@ -30,6 +29,7 @@ export default async function handler(req, res) {
       duration
     } = req.body;
 
+    // map to camelCase for internal usage
     const cameraControl = camera_control;
     const videoSize = video_size;
 
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       cameraControl,
       videoSize,
       duration,
-      smallImageBase64: smallImageBase64?.slice(0, 30) + '...',
+      smallImageBase64: smallImageBase64?.slice(0, 30) + '...'
     });
 
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
@@ -66,7 +66,9 @@ export default async function handler(req, res) {
 
     console.log('✅ Small image uploaded.');
 
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage.from('uploads').createSignedUrl(uploadPath, 5 * 60);
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('uploads')
+      .createSignedUrl(uploadPath, 5 * 60);
 
     if (signedUrlError) {
       console.error('❌ Signed URL error:', signedUrlError);
