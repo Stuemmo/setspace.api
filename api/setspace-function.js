@@ -29,18 +29,19 @@ export default async function handler(req, res) {
       duration
     } = req.body;
 
-    // map to camelCase for internal usage
+    // Map to camelCase
     const cameraControl = camera_control;
     const videoSize = video_size;
 
-    console.log("📦 Payload received by server:", {
+    // 🔍 Confirm payload values
+    console.log("🧾 Received payload:", {
       jobId,
       filename,
       imageUrl,
-      cameraControl,
-      videoSize,
+      camera_control,
+      video_size,
       duration,
-      smallImageBase64: smallImageBase64?.slice(0, 30) + '...'
+      smallImageBase64Preview: smallImageBase64?.slice(0, 30) + "..."
     });
 
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
