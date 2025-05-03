@@ -19,28 +19,39 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    const { jobId, filename, smallImageBase64, imageUrl, cameraControl, videoSize, duration } = req.body;
+    // ✅ Fix: match frontend keys exactly, then map them
+    const {
+      jobId,
+      filename,
+      smallImageBase64,
+      imageUrl,
+      camera_control,
+      video_size,
+      duration
+    } = req.body;
 
-console.log("📦 Payload received by server:", {
-  jobId,
-  filename,
-  imageUrl,
-  cameraControl,
-  videoSize,
-  duration,
-  smallImageBase64: smallImageBase64?.slice(0, 30) + '...',
-});
-if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
+    const cameraControl = camera_control;
+    const videoSize = video_size;
+
+    console.log("📦 Payload received by server:", {
+      jobId,
+      filename,
+      imageUrl,
+      cameraControl,
+      videoSize,
+      duration,
+      smallImageBase64: smallImageBase64?.slice(0, 30) + '...',
+    });
+
+    if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
       console.error('❌ Missing required fields', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     console.log(`🚀 Starting video generation for job: ${jobId}`);
 
-    // ✅ Ensure filename ends with .jpg for Kling compatibility
     const safeFilename = filename.endsWith('.jpg') ? filename : `${filename}.jpg`;
     const uploadPath = `small/${safeFilename}`;
-
     const buffer = Buffer.from(smallImageBase64, 'base64');
 
     const { error: uploadError } = await supabase.storage.from('uploads').upload(uploadPath, buffer, {
