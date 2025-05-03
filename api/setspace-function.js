@@ -27,8 +27,11 @@ export default async function handler(req, res) {
 
     console.log(`🚀 Starting video generation for job: ${jobId}`);
 
+    // ✅ Ensure filename ends with .jpg for Kling compatibility
+    const safeFilename = filename.endsWith('.jpg') ? filename : `${filename}.jpg`;
+    const uploadPath = `small/${safeFilename}`;
+
     const buffer = Buffer.from(smallImageBase64, 'base64');
-    const uploadPath = `small/${filename}`;
 
     const { error: uploadError } = await supabase.storage.from('uploads').upload(uploadPath, buffer, {
       contentType: 'image/jpeg',
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
     }
 
     const signedImageUrl = signedUrlData.signedUrl;
-    console.log('✅ Signed image URL created.');
+    console.log('✅ Signed image URL created:', signedImageUrl);
 
     let cinematicPrompt = "A cinematic scene.";
     try {
