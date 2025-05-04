@@ -2,15 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
 import fetch from 'node-fetch';
 
-// Runtime environment variable checks
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SERVICE_ROLE_KEY;
-const openaiApiKey = process.env.OPENAI_API_KEY;
-const replicateApiKey = process.env.REPLICATE_API_KEY;
-
-if (!supabaseUrl || !supabaseKey || !openaiApiKey || !replicateApiKey) {
-  throw new Error("Missing one or more required environment variables.");
-}
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SERVICE_ROLE_KEY!;
+const openaiApiKey = process.env.OPENAI_API_KEY!;
+const replicateApiKey = process.env.REPLICATE_API_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 const replicate = new Replicate({ auth: replicateApiKey });
@@ -94,17 +89,19 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: 'gpt-4-vision-preview',
+          temperature: 0.7,
+          max_tokens: 300,
           messages: [
             {
               role: 'system',
-              content: `You are a cinematic scene director. Your job is to write short (1–2 sentence) cinematic descriptions for video animation. Use only natural movement (light flicker, curtain sway, tree motion, water ripple, shadow drift). Avoid exaggeration or structure changes.`
+              content: `You are a cinematic scene director. Your job is to write very short (max 2 sentence) cinematic descriptions for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, clouds drifting, shifting shadows). Do not alter the structure of the space. Keep it realistic and short.`
             },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: `Describe this scene for video animation. Camera movement is "${cameraControl}".`
+                  text: `Create a short cinematic description of this scene for video animation. The camera movement should be: "${cameraControl}".`
                 },
                 {
                   type: 'image_url',
@@ -112,26 +109,30 @@ export default async function handler(req, res) {
                 }
               ]
             }
-          ],
-          max_tokens: 300
+          ]
         })
       });
 
       const visionData = await visionResponse.json();
+      console.log('📤 Full OpenAI response:', JSON.stringify(visionData, null, 2));
 
-      if (visionData?.choices?.[0]?.message?.content) {
-        cinematicPrompt = visionData.choices[0].message.content.trim();
+      const rawPrompt = visionData?.choices?.[0]?.message?.content?.trim();
+
+      if (rawPrompt) {
+        cinematicPrompt = rawPrompt;
         console.log('🎬 Cinematic prompt generated:', cinematicPrompt);
       } else {
         console.warn('⚠️ OpenAI fallback: no cinematic prompt content.');
+        cinematicPrompt = `A realistic scene with ${cameraControl} camera movement and natural ambient motion.`;
       }
 
     } catch (openaiError) {
       console.error('❌ OpenAI Vision API error:', openaiError);
       console.warn('⚠️ Falling back to generic prompt.');
+      cinematicPrompt = `A realistic scene with ${cameraControl} camera movement and natural ambient motion.`;
     }
 
-    const safePrompt = cinematicPrompt.slice(0, 350); // Kling limit safety
+    const safePrompt = cinematicPrompt.slice(0, 350);
 
     const klingVersion = videoSize === '1080p'
       ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
