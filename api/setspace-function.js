@@ -95,7 +95,7 @@ export default async function handler(req, res) {
               content: [
                 {
                   type: 'text',
-                  text: `Create a cinematic description of this scene for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
+                  text: `Create a cinematic description of this scene for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, clouds drifting, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
                 },
                 {
                   type: 'image_url',
