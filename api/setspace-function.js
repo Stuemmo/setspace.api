@@ -29,19 +29,18 @@ export default async function handler(req, res) {
       duration
     } = req.body;
 
-    // Map to camelCase
-    const cameraControl = camera_control;
-    const videoSize = video_size;
+    // Sanitize values
+    const cameraControl = camera_control?.toLowerCase();
+    const videoSize = video_size?.toLowerCase();
 
-    // 🔍 Confirm payload values
-    console.log("🧾 Received payload:", {
+    console.log("📦 Payload received by server:", {
       jobId,
       filename,
       imageUrl,
-      camera_control,
-      video_size,
+      cameraControl,
+      videoSize,
       duration,
-      smallImageBase64Preview: smallImageBase64?.slice(0, 30) + "..."
+      smallImagePreview: smallImageBase64?.slice(0, 30) + '...'
     });
 
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
@@ -95,7 +94,10 @@ export default async function handler(req, res) {
             {
               role: 'user',
               content: [
-                { type: 'text', text: `Create a cinematic description of this interior scene for video animation. Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.` },
+                {
+                  type: 'text',
+                  text: `Create a cinematic description of this interior scene for video animation. Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
+                },
                 { type: 'image_url', image_url: signedImageUrl }
               ]
             }
@@ -105,11 +107,16 @@ export default async function handler(req, res) {
       });
 
       const visionData = await visionResponse.json();
-      if (visionData?.choices?.[0]?.message?.content) {
+
+      if (
+        visionData?.choices?.[0]?.message?.content &&
+        typeof visionData.choices[0].message.content === 'string'
+      ) {
         cinematicPrompt = visionData.choices[0].message.content.trim();
-        console.log('✅ Cinematic prompt generated.');
+        console.log('✅ Cinematic prompt generated:', cinematicPrompt);
       } else {
         console.warn('⚠️ OpenAI fallback: no cinematic prompt content.');
+        console.warn('🧠 Full vision response:', JSON.stringify(visionData, null, 2));
       }
 
     } catch (openaiError) {
@@ -125,7 +132,10 @@ export default async function handler(req, res) {
 
     const prediction = await replicate.predictions.create({
       version: klingVersion,
-      input: { prompt: cinematicPrompt, start_image: signedImageUrl }
+      input: {
+        prompt: cinematicPrompt,
+        start_image: signedImageUrl
+      }
     });
 
     if (!prediction?.id) {
