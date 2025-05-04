@@ -2,10 +2,15 @@ import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
 import fetch from 'node-fetch';
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SERVICE_ROLE_KEY!;
-const openaiApiKey = process.env.OPENAI_API_KEY!;
-const replicateApiKey = process.env.REPLICATE_API_KEY!;
+// Runtime environment variable checks
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SERVICE_ROLE_KEY;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const replicateApiKey = process.env.REPLICATE_API_KEY;
+
+if (!supabaseUrl || !supabaseKey || !openaiApiKey || !replicateApiKey) {
+  throw new Error("Missing one or more required environment variables.");
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 const replicate = new Replicate({ auth: replicateApiKey });
@@ -92,14 +97,14 @@ export default async function handler(req, res) {
           messages: [
             {
               role: 'system',
-              content: `You are a cinematic scene director. Your job is to write very short (max 2 sentence) cinematic descriptions for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, clouds drifting, shifting shadows). Do not alter the structure of the space. Keep it realistic and short.`
+              content: `You are a cinematic scene director. Your job is to write short (1–2 sentence) cinematic descriptions for video animation. Use only natural movement (light flicker, curtain sway, tree motion, water ripple, shadow drift). Avoid exaggeration or structure changes.`
             },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: `Create a short cinematic description of this scene for video animation. Camera movement: "${cameraControl}".`
+                  text: `Describe this scene for video animation. Camera movement is "${cameraControl}".`
                 },
                 {
                   type: 'image_url',
@@ -126,9 +131,7 @@ export default async function handler(req, res) {
       console.warn('⚠️ Falling back to generic prompt.');
     }
 
-    // ✅ Always include cameraControl manually at the front, then trim
-    const trimmed = cinematicPrompt.slice(0, 300); // Reserve room
-    const safePrompt = `Camera movement: ${cameraControl}. ${trimmed}`;
+    const safePrompt = cinematicPrompt.slice(0, 350); // Kling limit safety
 
     const klingVersion = videoSize === '1080p'
       ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
