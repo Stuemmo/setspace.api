@@ -2,10 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
 import fetch from 'node-fetch';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SERVICE_ROLE_KEY;
-const openaiApiKey = process.env.OPENAI_API_KEY;
-const replicateApiKey = process.env.REPLICATE_API_KEY;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SERVICE_ROLE_KEY!;
+const openaiApiKey = process.env.OPENAI_API_KEY!;
+const replicateApiKey = process.env.REPLICATE_API_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 const replicate = new Replicate({ auth: replicateApiKey });
@@ -39,11 +39,11 @@ export default async function handler(req, res) {
       cameraControl,
       videoSize,
       duration,
-      smallImageBase64: smallImageBase64?.slice(0, 30) + '...'
+      smallImageBase64: smallImageBase64?.slice(0, 40) + '...'
     });
 
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
-      console.error('❌ Missing required fields', req.body);
+      console.error('❌ Missing required fields:', req.body);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -80,6 +80,7 @@ export default async function handler(req, res) {
     let cinematicPrompt = "A cinematic scene.";
     try {
       console.log('🧠 Calling OpenAI Vision to generate cinematic prompt...');
+
       const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -87,19 +88,22 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4-turbo',
+          model: 'gpt-4-vision-preview',
           messages: [
-            { role: 'system', content: 'You are a cinematic scene director.' },
+            {
+              role: 'system',
+              content: `You are a cinematic scene director. Your job is to write very short (max 2 sentence) cinematic descriptions for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, clouds drifting, shifting shadows). Do not alter the structure of the space. Keep it realistic and short.`
+            },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: `Create a cinematic description of this scene for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, clouds drifting, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
+                  text: `Create a short cinematic description of this scene for video animation. Camera movement: "${cameraControl}".`
                 },
                 {
                   type: 'image_url',
-                  image_url: { url: signedImageUrl } // ✅ Corrected structure
+                  image_url: { url: signedImageUrl }
                 }
               ]
             }
@@ -109,18 +113,22 @@ export default async function handler(req, res) {
       });
 
       const visionData = await visionResponse.json();
+
       if (visionData?.choices?.[0]?.message?.content) {
         cinematicPrompt = visionData.choices[0].message.content.trim();
-        console.log('✅ Cinematic prompt generated:', cinematicPrompt);
+        console.log('🎬 Cinematic prompt generated:', cinematicPrompt);
       } else {
         console.warn('⚠️ OpenAI fallback: no cinematic prompt content.');
-        console.warn('⚠️ Full vision response:', visionData);
       }
 
     } catch (openaiError) {
       console.error('❌ OpenAI Vision API error:', openaiError);
       console.warn('⚠️ Falling back to generic prompt.');
     }
+
+    // ✅ Always include cameraControl manually at the front, then trim
+    const trimmed = cinematicPrompt.slice(0, 300); // Reserve room
+    const safePrompt = `Camera movement: ${cameraControl}. ${trimmed}`;
 
     const klingVersion = videoSize === '1080p'
       ? 'ab4d34d6acd764074179a8139cfb9b55803aecf0cfb83061707a0561d1616d50'
@@ -131,7 +139,7 @@ export default async function handler(req, res) {
     const prediction = await replicate.predictions.create({
       version: klingVersion,
       input: {
-        prompt: cinematicPrompt,
+        prompt: safePrompt,
         start_image: signedImageUrl
       }
     });
