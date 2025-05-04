@@ -88,7 +88,7 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4-vision-preview',
+          model: 'gpt-4o',
           temperature: 0.7,
           max_tokens: 300,
           messages: [
