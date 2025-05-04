@@ -88,7 +88,7 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4-vision-preview',
+          model: 'gpt-4-turbo',
           messages: [
             { role: 'system', content: 'You are a cinematic scene director.' },
             {
