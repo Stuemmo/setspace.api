@@ -29,9 +29,8 @@ export default async function handler(req, res) {
       duration
     } = req.body;
 
-    // Sanitize values
-    const cameraControl = camera_control?.toLowerCase();
-    const videoSize = video_size?.toLowerCase();
+    const cameraControl = camera_control;
+    const videoSize = video_size;
 
     console.log("📦 Payload received by server:", {
       jobId,
@@ -40,7 +39,7 @@ export default async function handler(req, res) {
       cameraControl,
       videoSize,
       duration,
-      smallImagePreview: smallImageBase64?.slice(0, 30) + '...'
+      smallImageBase64: smallImageBase64?.slice(0, 30) + '...'
     });
 
     if (!jobId || !filename || !smallImageBase64 || !imageUrl || !cameraControl || !videoSize || !duration) {
@@ -96,9 +95,12 @@ export default async function handler(req, res) {
               content: [
                 {
                   type: 'text',
-                  text: `Create a cinematic description of this interior scene for video animation. Use natural movement only (light flicker, curtain sway, tree motion, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
+                  text: `Create a cinematic description of this scene for video animation. Use natural prominent movement (light flicker, curtain sway, tree motion, greenery rustling, water moving, shifting shadows). Camera movement: "${cameraControl}". Do not alter the structure of the space. Keep realism and elegance.`
                 },
-                { type: 'image_url', image_url: signedImageUrl }
+                {
+                  type: 'image_url',
+                  image_url: { url: signedImageUrl } // ✅ Corrected structure
+                }
               ]
             }
           ],
@@ -107,16 +109,12 @@ export default async function handler(req, res) {
       });
 
       const visionData = await visionResponse.json();
-
-      if (
-        visionData?.choices?.[0]?.message?.content &&
-        typeof visionData.choices[0].message.content === 'string'
-      ) {
+      if (visionData?.choices?.[0]?.message?.content) {
         cinematicPrompt = visionData.choices[0].message.content.trim();
         console.log('✅ Cinematic prompt generated:', cinematicPrompt);
       } else {
         console.warn('⚠️ OpenAI fallback: no cinematic prompt content.');
-        console.warn('🧠 Full vision response:', JSON.stringify(visionData, null, 2));
+        console.warn('⚠️ Full vision response:', visionData);
       }
 
     } catch (openaiError) {
